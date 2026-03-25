@@ -9,18 +9,8 @@ from astropy.coordinates import SkyCoord, EarthLocation, get_sun, GCRS
 from astropy.time import Time
 import astropy.units as u
 
-def get_units(data, col_name, default_unit):
-    """Checks for existing unit metadata or infers it based on value ranges."""
-    col = data[col_name]
-    if col.unit is not None:
-        return col.unit
-    
-    # Heuristic for RA: If any value > 24, it's almost certainly degrees.
-    if col_name.lower() in ['ra', 'raj2000']:
-        if np.nanmax(col) > 24:
-            return u.deg
-        return u.hourangle
-    return default_unit
+# Note: RA is assumed to be in Hours, Minutes, Seconds (HMS)
+# and Dec is assumed to be in Degrees, Arcminutes, Arcseconds (DMS)
 
 def run_ships(file_path, start_str, end_str):
     print(f"\n--- SHIPS: Source Highlighter for IPS ---\n")
@@ -46,11 +36,11 @@ def run_ships(file_path, start_str, end_str):
     _, unique_indices = np.unique(raw_data['source_name'], return_index=True)
     data = raw_data[np.sort(unique_indices)]
 
-    # Dynamic Unit Detection
-    ra_unit = get_units(data, 'raj2000', u.hourangle)
-    dec_unit = get_units(data, 'decj2000', u.deg)
+    # Hardcoded unit assumptions
+    ra_unit = u.hourangle  # RA assumed to be in HMS
+    dec_unit = u.deg       # Dec assumed to be in DMS
     
-    print(f"Detected units for {file_path}: RA = {ra_unit}, Dec = {dec_unit}")
+    print(f"Using hardcoded units for {file_path}: RA = HMS, Dec = DMS")
 
     src_icrs = SkyCoord(ra=data['raj2000'], dec=data['decj2000'], 
                         unit=(ra_unit, dec_unit), frame='icrs')

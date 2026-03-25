@@ -65,10 +65,10 @@ The tool is configured for the Ooty Radio Telescope (ORT) in southern India:
 Your source catalog must include the following columns:
 
 - `source_name`: Name/identifier of each source
-- `raj2000`: Right Ascension (J2000, in hours or degrees)
-- `decj2000`: Declination (J2000, in degrees)
+- `raj2000`: Right Ascension (J2000, **in Hours, Minutes, Seconds - HMS**)
+- `decj2000`: Declination (J2000, **in Degrees, Arcminutes, Arcseconds - DMS**)
 
-The tool will automatically detect coordinate units based on value ranges.
+**Note**: The tool assumes RA is provided in HMS and Dec is provided in DMS format. Ensure your input catalog follows this convention.
 
 ## Technical Details
 
