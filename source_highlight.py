@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import argparse
 import os
+import csv
 from astropy.table import Table
 from astropy.coordinates import SkyCoord, EarthLocation, get_sun, GCRS, CIRS
 from astropy.time import Time
@@ -83,6 +84,20 @@ def find_coordinate_columns(data):
     
     return ra_col, dec_col
 
+def find_flux_column(data):
+    """Find flux column in catalog (case-insensitive). Returns None if not found."""
+    data_cols_lower = [col.lower() for col in data.colnames]
+    flux_candidates = ['flux', 'flux_jy', 'flux_density', 's_peak']
+    
+    for candidate in flux_candidates:
+        if candidate in data_cols_lower:
+            flux_col = data.colnames[data_cols_lower.index(candidate)]
+            print(f"Found flux column: {flux_col} (units: Jansky)")
+            return flux_col
+    
+    print("Warning: Flux column not detected. Proceeding without flux information.")
+    return None
+
 def create_skycoord(data, ra_col, dec_col, dates):
     """Create SkyCoord objects in ICRS frame and transform to GCRS and CIRS at observation dates."""
     ra_unit = u.hourangle  # RA assumed to be in HMS
@@ -131,7 +146,7 @@ def calculate_elongations(src_gcrs, relevant_suns, seps):
     return signed_elongs
 
 def build_results_by_date(date_indices, src_indices, data, src_icrs, obs_times, 
-                          signed_elongs, r_ist, s_ist):
+                          signed_elongs, r_ist, s_ist, flux_col=None):
     """Organize observation results by date."""
     results_by_date = {}
     source_coords_cache = {}
@@ -151,15 +166,50 @@ def build_results_by_date(date_indices, src_indices, data, src_icrs, obs_times,
             results_by_date[date_str] = []
         
         elong = round(signed_elongs[i], 2)
-        results_by_date[date_str].append({
+        entry = {
             'source_name': s_name,
             'elong': elong,
             'rise': r_ist[i].datetime.strftime('%H:%M'),
             'set': s_ist[i].datetime.strftime('%H:%M'),
             'coords': source_coords_cache[s_name]
-        })
+        }
+        
+        # Add flux if available
+        if flux_col is not None:
+            entry['flux'] = float(data[flux_col][idx])
+        
+        results_by_date[date_str].append(entry)
     
     return results_by_date
+
+def create_observation_schedule(results_by_date):
+    """Create optimized observation schedule by binning sources by elongation and selecting highest flux per bin."""
+    scheduled_by_date = {}
+    
+    for date_str, sources in results_by_date.items():
+        scheduled_by_date[date_str] = []
+        
+        # Check if flux information is available
+        if not sources or 'flux' not in sources[0]:
+            return None  # Flux data required for scheduling
+        
+        # Bin sources by 5-degree elongation bins
+        bins = {}
+        for source in sources:
+            # Find the bin (round to nearest 5 degrees)
+            bin_key = round(source['elong'] / 5) * 5
+            if bin_key not in bins:
+                bins[bin_key] = []
+            bins[bin_key].append(source)
+        
+        # Select highest flux source from each bin
+        for bin_key in sorted(bins.keys()):
+            bin_sources = bins[bin_key]
+            # Select source with highest flux
+            selected = max(bin_sources, key=lambda x: x['flux'])
+            scheduled_by_date[date_str].append(selected)
+    
+    return scheduled_by_date
 
 def write_output_file(out_name, file_path, results_by_date):
     """Write formatted observation schedule to output file."""
@@ -183,7 +233,40 @@ def write_output_file(out_name, file_path, results_by_date):
     
     return sorted_dates
 
-def run_ships(file_path, start_str, end_str):
+def write_output_csv(out_name, results_by_date):
+    """Write observation schedule to CSV file with columns: date, source_name, RA, Dec, rise, set, flux."""
+    sorted_dates = sorted(results_by_date.keys())
+    
+    with open(out_name, 'w', newline='') as f:
+        writer = csv.writer(f)
+        # Write header
+        writer.writerow(['date', 'source_name', 'RA (J2000 HMS)', 'Dec (J2000 DMS)', 'rise (IST)', 'set (IST)', 'flux (Jy)'])
+        
+        # Write data sorted by date, then by elongation within each date
+        for date_str in sorted_dates:
+            sorted_sources_for_date = sorted(results_by_date[date_str], key=lambda x: x['elong'])
+            for entry in sorted_sources_for_date:
+                # Extract RA and Dec from coords string
+                coords_parts = entry['coords'].split('  ')
+                ra_part = coords_parts[0].split(': ')[1] if len(coords_parts) > 0 else ''
+                dec_part = coords_parts[1].split(': ')[1] if len(coords_parts) > 1 else ''
+                
+                # Get flux if available, else NaN
+                flux_val = entry.get('flux', np.nan)
+                
+                writer.writerow([
+                    date_str,
+                    entry['source_name'],
+                    ra_part,
+                    dec_part,
+                    entry['rise'],
+                    entry['set'],
+                    flux_val
+                ])
+    
+    return sorted_dates
+
+def run_ships(file_path, start_str, end_str, schedule=False):
     """Main orchestration function for SHIPS scheduling."""
     print(f"\n--- SHIPS: Source Highlighter for IPS ---\n")
 
@@ -205,6 +288,9 @@ def run_ships(file_path, start_str, end_str):
     
     print(f"Found RA column: {ra_col}, Dec column: {dec_col}")
     print(f"Using hardcoded units: RA = HMS, Dec = DMS")
+    
+    # Check for flux column
+    flux_col = find_flux_column(data)
     
     # Create sky coordinates
     src_icrs, src_gcrs_all, src_cirs_all = create_skycoord(data, ra_col, dec_col, dates)
@@ -229,18 +315,34 @@ def run_ships(file_path, start_str, end_str):
     
     # Organize and output results
     results_by_date = build_results_by_date(date_indices, src_indices, data, src_icrs, 
-                                             obs_times, signed_elongs, r_ist, s_ist)
+                                             obs_times, signed_elongs, r_ist, s_ist, flux_col)
     
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    out_name = f"ships_{base_name}_{start_str}_{end_str}.txt"
-    sorted_dates = write_output_file(out_name, file_path, results_by_date)
     
-    print(f"Success! Rise/Set times for {len(sorted_dates)} dates stored in {out_name}\n")
+    # Output as CSV file
+    out_name_csv = f"all_sources_{base_name}_{start_str}_{end_str}.csv"
+    write_output_csv(out_name_csv, results_by_date)
+    print(f"Success! Schedule saved to {out_name_csv}\n")
+    
+    # Generate optimized observation schedule if requested
+    if schedule:
+        if flux_col is None:
+            print("Warning: --schedule flag used but no flux column detected. Skipping schedule generation.")
+        else:
+            print("Generating optimized observation schedule...")
+            scheduled = create_observation_schedule(results_by_date)
+            if scheduled is None:
+                print("Error: Could not create schedule without flux information.")
+            else:
+                schedule_out_name_csv = f"schedule_{base_name}_{start_str}_{end_str}.csv"
+                write_output_csv(schedule_out_name_csv, scheduled)
+                print(f"Optimized schedule (highest flux per 5° elongation bin) saved to {schedule_out_name_csv}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SHIPS: Source Highlighter for IPS")
     parser.add_argument("file", help="Catalog path (FITS/Text)")
     parser.add_argument("start", help="Start YYYYMMDD")
     parser.add_argument("end", help="End YYYYMMDD")
+    parser.add_argument("--schedule", action="store_true", help="Generate optimized observation schedule (requires flux column)")
     args = parser.parse_args()
-    run_ships(args.file, args.start, args.end)
+    run_ships(args.file, args.start, args.end, schedule=args.schedule)
