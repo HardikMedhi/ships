@@ -14,7 +14,7 @@ SHIPS is a Python tool for scheduling astronomical observations of celestial sou
 Clone the repository and install dependencies:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/HardikMedhi/ships.git
 cd ships
 pip install -r requirements.txt
 ```
