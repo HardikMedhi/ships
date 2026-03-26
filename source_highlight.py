@@ -240,7 +240,7 @@ def write_output_csv(out_name, results_by_date):
     with open(out_name, 'w', newline='') as f:
         writer = csv.writer(f)
         # Write header
-        writer.writerow(['date', 'source_name', 'RA (J2000 HMS)', 'Dec (J2000 DMS)', 'rise (IST)', 'set (IST)', 'flux (Jy)'])
+        writer.writerow(['date', 'source_name', 'RA (J2000 HMS)', 'Dec (J2000 DMS)', 'elongation', 'rise (IST)', 'set (IST)', 'flux (Jy)'])
         
         # Write data sorted by date, then by elongation within each date
         for date_str in sorted_dates:
@@ -259,6 +259,7 @@ def write_output_csv(out_name, results_by_date):
                     entry['source_name'],
                     ra_part,
                     dec_part,
+                    entry['elong'],
                     entry['rise'],
                     entry['set'],
                     flux_val
