@@ -4,10 +4,10 @@ SHIPS is a Python tool for scheduling astronomical observations of celestial sou
 
 ## Features
 
-- **Flexible Catalog Input**: Supports both FITS and ASCII format source catalogs
+- **Flexible Catalog Input**: Supports both FITS and TXT format source catalogs with flexible column naming
 - **IPS-Optimized Filtering**: Automatically identifies sources within 90° solar elongation, ideal for scintillation studies
 - **IST Time Conversion**: Computes rise/set times in Indian Standard Time (IST) for ORT operations
-- **Formatted Schedule**: Generates human-readable observation schedules with precise timing
+- **Date-Based Scheduling**: Generates schedules organized by observation date for convenient planning
 
 ## Installation
 
@@ -27,7 +27,7 @@ python source_highlight.py <catalog_file> <start_date> <end_date>
 
 ### Arguments
 
-- `catalog_file`: Path to source catalog (FITS or ASCII format). Must contain columns `raj2000`, `decj2000`, and `source_name`
+- `catalog_file`: Path to source catalog (FITS or TXT format). Supported file extensions: `.fits`, `.txt`
 - `start_date`: Start date in YYYYMMDD format
 - `end_date`: End date in YYYYMMDD format
 
@@ -41,16 +41,16 @@ This generates an output file: `ships_ort_cat_20260320_20260430.txt`
 
 ## Output
 
-The tool generates a formatted text file containing:
+The tool generates a formatted text file organized by observation date. For each date, it displays all visible sources with:
 
 - **Source Name**: Identifier from the input catalog
-- **Coordinates**: RA (J2000 in HMS) and Dec (J2000 in DMS)
-- **Date**: Observation date
+- **RA (J2000 HMS)**: Right Ascension in Hours, Minutes, Seconds
+- **Dec (J2000 DMS)**: Declination in Degrees, Arcminutes, Arcseconds
 - **Elongation**: Angular separation from the Sun (degrees)
 - **Rise Time**: Source rise time in IST
 - **Set Time**: Source set time in IST
 
-Sources are sorted by minimum solar elongation, with sources having smaller minimum elongations listed first.
+Sources within each date are sorted by minimum solar elongation (smallest first).
 
 ## Observation Site
 
@@ -62,21 +62,23 @@ The tool is configured for the Ooty Radio Telescope (ORT) in southern India:
 
 ## Input Catalog Requirements
 
-Your source catalog must include the following columns:
+Your source catalog must be in FITS (.fits) or TXT (.txt) format and include the following columns:
 
 - `source_name`: Name/identifier of each source
-- `raj2000`: Right Ascension (J2000, **in Hours, Minutes, Seconds - HMS**)
-- `decj2000`: Declination (J2000, **in Degrees, Arcminutes, Arcseconds - DMS**)
+- **RA Column** (one of): `ra`, `raj2000`, or `ra_j2000` (Right Ascension in J2000, HMS format)
+- **Dec Column** (one of): `dec`, `decj2000`, or `dec_j2000` (Declination in J2000, DMS format)
 
-**Note**: The tool assumes RA is provided in HMS and Dec is provided in DMS format. Ensure your input catalog follows this convention.
+**Note**: The tool searches for RA and Dec columns case-insensitively with multiple naming options for flexibility. Ensure your input catalog includes at least one of the acceptable column names for each coordinate.
 
 ## Technical Details
 
 - Uses **Astropy** for coordinate transformations and time calculations
-- Converts between celestial (GCRS) and sidereal time systems
+- **Coordinate Frames**: GCRS for solar elongation calculations, CIRS for rise/set times (accounts for precession and nutation)
+- Transforms all source coordinates to GCRS and CIRS frames at observation dates for accurate calculations
+- Converts between celestial (CIRS) and sidereal time systems
 - Computes hour angles and rise/set times with proper atmospheric refraction considerations
 - Implements solar elongation filtering for IPS-specific observation scheduling
 
 ## Author
 
-Hardik Medhi (with the help of Gemini 3)
+Hardik Medhi
